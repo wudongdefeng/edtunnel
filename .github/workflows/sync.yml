@@ -1,40 +1,40 @@
-name: "🔄 Sync all branches with main"
+name: Upstream Sync
+
+permissions:
+  contents: write
 
 on:
+  schedule:
+    - cron: "0 0 * * *" # every day
   workflow_dispatch:
 
 jobs:
-  sync_branches:
+  sync_latest_from_upstream:
+    name: Sync latest commits from upstream repo
     runs-on: ubuntu-latest
-    name: "🔄 Sync branches with main"
-    env:
-      EMAIL: ${{ secrets.GH_EMAIL }}
-      NAME: ${{ secrets.GH_USERNAME }}
-      TOKEN: ${{ secrets.TOKEN }}
-      REMOTE_NAME: origin
-      BRANCH_BASE_NAME: proxyip
-      BRANCH_COUNT: 200
+    if: ${{ github.event.repository.fork }}
 
     steps:
-      - name: 🛠 Set up Git config
-        run: |
-          git config --global user.email "${{ env.EMAIL }}"
-          git config --global user.name "${{ env.NAME }}"
+      # Step 1: run a standard checkout action
+      - name: Checkout target repo
+        uses: actions/checkout@v3
 
-      - name: 📥 Clone repository
-        run: |
-          git clone https:///${{ env.TOKEN }}@github.com/${{github.repository}}.git
-          cd $(echo ${{github.repository}} | awk -F'/' '{print $2}')
+      # Step 2: run the sync action
+      - name: Sync upstream changes
+        id: sync
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
+        with:
+          upstream_sync_repo: cmliu/edgetunnel
+          upstream_sync_branch: main
+          target_sync_branch: main
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # automatically generated, no need to set
 
-      - name: 🔄 Sync and push branches
+          # Set test_mode true to run tests instead of the true action!!
+          test_mode: false
+
+      - name: Sync check
+        if: failure()
         run: |
-          cd $(echo ${{github.repository}} | awk -F'/' '{print $2}')
-          git checkout main
-          git pull ${REMOTE_NAME} main
-          for ((i=1; i<=${{ env.BRANCH_COUNT }}; i++)); do
-            branch_name="${{ env.BRANCH_BASE_NAME }}${i}"
-            git checkout $branch_name
-            git merge main --no-edit
-            git push ${REMOTE_NAME} $branch_name
-            git checkout main
-          done
+          echo "[Error] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动 Sync Fork 一次，详细教程请查看项目README.md "
+          echo "[Error] Due to a change in the workflow file of the upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork. Please refer to the project README.md for instructions. "
+          exit 1
